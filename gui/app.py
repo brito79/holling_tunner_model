@@ -1,11 +1,19 @@
 import PySimpleGUI as sg
 import numpy as np
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from models.holling_tanner import HollingTannerModel
 
-def create_figure(solution, t):
-    """Create matplotlib figure for GUI"""
+def draw_figure(element, figure):
+    """Draw a matplotlib figure onto a PySimpleGUI Graph element"""
+    plt.close('all')  # Clear previous figures
+    canv = FigureCanvasTkAgg(figure, element.TKCanvas)
+    canv.draw()
+    canv.get_tk_widget().pack(side='top', fill='both', expand=1)
+    return canv
+
+def create_combined_figure(solution, t):
+    """Create a single figure with both subplots"""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
     
     # Population vs time
@@ -27,115 +35,106 @@ def create_figure(solution, t):
     plt.tight_layout()
     return fig
 
-def draw_figure(canvas, figure):
-    """Draw matplotlib figure on PySimpleGUI canvas"""
-    if hasattr(canvas, 'figure_canvas_agg'):
-        canvas.figure_canvas_agg.get_tk_widget().forget()
-        plt.close('all')
-    
-    figure_canvas_agg = FigureCanvasTkAgg(figure, canvas.TKCanvas)
-    figure_canvas_agg.draw()
-    figure_canvas_agg.get_tk_widget().pack(side='top', fill='both', expand=1)
-    return figure_canvas_agg
-
 def main():
-    # Default parameters
+    # Default parameters - must match EXACTLY with model parameters
     default_params = {
-        'r': 1.0,   # Prey growth rate
+        'r': 1.0,    # Prey growth rate
         'K': 10.0,   # Carrying capacity
         'a': 1.0,    # Attack rate
         'h': 0.1,    # Handling time
-        'm': 0.5,    # Predator mortality
+        'm': 0.5,    # Mortality rate
         'c': 0.5,    # Conversion efficiency
-        'd': 0.1     # Predator growth
+        'd': 0.1     # Predator growth rate
     }
     
-    # Initial conditions
-    initial_conditions = [5.0, 2.0]  # [N0, P0]
-    
-    # Time parameters
-    t_max = 100
-    num_points = 1000
-    
-    # GUI layout
+    # Layout - using the SAME keys as default_params
     parameter_col = [
-        [sg.Text('Prey Parameters')],
-        [sg.Text('Growth rate (r):'), sg.Input(default_params['r'], key='-R-', size=(10, 1))],
-        [sg.Text('Carrying capacity (K):'), sg.Input(default_params['K'], key='-K-', size=(10, 1))],
+        [sg.Text('Prey Parameters', font='Any 12')],
+        [sg.Text('Growth rate (r):'), sg.Input(default_params['r'], key='-r-', size=10)],
+        [sg.Text('Carrying capacity (K):'), sg.Input(default_params['K'], key='-K-', size=10)],
         
-        [sg.Text('\nPredator Parameters')],
-        [sg.Text('Attack rate (a):'), sg.Input(default_params['a'], key='-A-', size=(10, 1))],
-        [sg.Text('Handling time (h):'), sg.Input(default_params['h'], key='-H-', size=(10, 1))],
-        [sg.Text('Mortality rate (m):'), sg.Input(default_params['m'], key='-M-', size=(10, 1))],
-        [sg.Text('Conversion (c):'), sg.Input(default_params['c'], key='-C-', size=(10, 1))],
-        [sg.Text('Growth rate (d):'), sg.Input(default_params['d'], key='-D-', size=(10, 1))],
+        [sg.Text('\nPredator Parameters', font='Any 12')],
+        [sg.Text('Attack rate (a):'), sg.Input(default_params['a'], key='-a-', size=10)],
+        [sg.Text('Handling time (h):'), sg.Input(default_params['h'], key='-h-', size=10)],
+        [sg.Text('Mortality rate (m):'), sg.Input(default_params['m'], key='-m-', size=10)],
+        [sg.Text('Conversion (c):'), sg.Input(default_params['c'], key='-c-', size=10)],
+        [sg.Text('Growth rate (d):'), sg.Input(default_params['d'], key='-d-', size=10)],
         
-        [sg.Text('\nInitial Conditions')],
-        [sg.Text('Initial prey (N0):'), sg.Input(initial_conditions[0], key='-N0-', size=(10, 1))],
-        [sg.Text('Initial predator (P0):'), sg.Input(initial_conditions[1], key='-P0-', size=(10, 1))],
+        [sg.Text('\nInitial Conditions', font='Any 12')],
+        [sg.Text('Initial prey (N0):'), sg.Input('5.0', key='-N0-', size=10)],
+        [sg.Text('Initial predator (P0):'), sg.Input('2.0', key='-P0-', size=10)],
         
-        [sg.Text('\nSimulation Time')],
-        [sg.Text('Max time:'), sg.Input(t_max, key='-TMAX-', size=(10, 1))],
+        [sg.Text('\nSimulation Time', font='Any 12')],
+        [sg.Text('Max time:'), sg.Input('100', key='-TMAX-', size=10)],
         
         [sg.Button('Run Simulation'), sg.Button('Exit')]
     ]
     
     graph_col = [
-        [sg.Text('Simulation Results', size=(40, 1), justification='center')],
-        [sg.Canvas(key='-CANVAS-')]
+        [sg.Graph(
+            canvas_size=(800, 400),
+            graph_bottom_left=(0, 0),
+            graph_top_right=(800, 400),
+            key='-GRAPH-',
+            pad=0,
+            enable_events=True,
+            background_color='#F0F0F0'
+        )]
     ]
     
     layout = [
         [
-            sg.Column(parameter_col),
+            sg.Column(parameter_col, vertical_alignment='top'),
             sg.VSeperator(),
-            sg.Column(graph_col)
+            sg.Column(graph_col, expand_x=True, expand_y=True)
         ]
     ]
     
-    window = sg.Window('Holling-Tanner Predator-Prey Model', layout, finalize=True)
+    window = sg.Window(
+        'Holling-Tanner Predator-Prey Model',
+        layout,
+        resizable=True,
+        finalize=True,
+        size=(1200, 600)
+    )
     
-    # Initialize figure
-    fig = plt.figure(figsize=(10, 4))
-    figure_canvas_agg = draw_figure(window['-CANVAS-'], fig)
+    # Initial empty figure
+    fig = plt.figure(figsize=(8, 4))
+    fig_agg = draw_figure(window['-GRAPH-'], fig)
     
     while True:
         event, values = window.read()
         
         if event in (sg.WIN_CLOSED, 'Exit'):
             break
-        
+            
         if event == 'Run Simulation':
             try:
-                # Get parameters from GUI
+                # Create params dictionary with EXACT parameter names
                 params = {
-                    'r': float(values['-R-']),
+                    'r': float(values['-r-']),
                     'K': float(values['-K-']),
-                    'a': float(values['-A-']),
-                    'h': float(values['-H-']),
-                    'm': float(values['-M-']),
-                    'c': float(values['-C-']),
-                    'd': float(values['-D-'])
+                    'a': float(values['-a-']),
+                    'h': float(values['-h-']),
+                    'm': float(values['-m-']),
+                    'c': float(values['-c-']),
+                    'd': float(values['-d-'])
                 }
                 
-                initial_conditions = [
-                    float(values['-N0-']),
-                    float(values['-P0-'])
-                ]
-                
+                initial_conditions = [float(values['-N0-']), float(values['-P0-'])]
                 t_max = float(values['-TMAX-'])
-                t = np.linspace(0, t_max, num_points)
+                t = np.linspace(0, t_max, 1000)
                 
                 # Run simulation
                 model = HollingTannerModel(**params)
                 solution = model.simulate(initial_conditions, t)
                 
-                # Update plot
-                fig = create_figure(solution, t)
-                figure_canvas_agg = draw_figure(window['-CANVAS-'], fig)
+                # Update figure
+                fig = create_combined_figure(solution, t)
+                fig_agg = draw_figure(window['-GRAPH-'], fig)
                 
-            except ValueError as e:
-                sg.popup_error(f"Invalid input: {str(e)}")
+            except Exception as e:
+                sg.popup_error(f'Error: {str(e)}')
     
     window.close()
 
